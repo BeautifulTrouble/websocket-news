@@ -1,4 +1,5 @@
 bleach
+facebook-sdk
 requests
 tweepy
 websocket-client
