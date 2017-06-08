@@ -5,10 +5,8 @@ import autovenv
 autovenv.run()
 
 import atexit
-import contextlib
 import json
 import multiprocessing
-import os
 import time
 import uuid
 from collections import deque, namedtuple
@@ -22,6 +20,11 @@ from bleach.sanitizer import Cleaner
 from bleach.linkifier import LinkifyFilter
 from tweepy.streaming import Stream, StreamListener
 from SimpleWebSocketServer import SimpleWebSocketServer, WebSocket
+
+from utils import (
+    raise_hell,
+    script_directory,
+)
 
 from config import (
     CONFIG_JSON_URL,
@@ -54,34 +57,6 @@ NewsItem = namedtuple('NewsItem', [
     'user_handle', 
     'user_link',
 ])
-
-
-@contextlib.contextmanager
-def script_directory():
-    '''
-    A context manager which allows you to write blocks of code which run within 
-    this script's directory. The working directory is restored afterward.
-    '''
-    cwd = os.getcwd()
-    os.chdir(os.path.dirname(os.path.realpath(__file__)))
-    try:
-        yield
-    finally:
-        os.chdir(cwd)
-
-
-def raise_hell(f):
-    '''
-    Traceback displaying decorator for callbacks whose exceptions get expunged
-    '''
-
-    import traceback
-    def wrapper(*a, **kw):
-        try: return f(*a, **kw)
-        except Exception:
-            traceback.print_exc(limit=-1)
-            raise
-    return wrapper
 
 
 # So we can offer a safe HTML representation of news items
