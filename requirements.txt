@@ -1,0 +1,5 @@
+bleach
+requests
+tweepy
+websocket-client
+git+https://github.com/dpallot/simple-websocket-server.git
