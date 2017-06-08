@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+    <meta charset="utf-8" />
+    <title>Newsfeed Example</title>
+    <script language="javascript" type="text/javascript">
+        var init = function() {
+            document.form.url.value = "ws://api.beautifulrising.org:7800"
+            document.form.disconnect.disabled = true;
+        }
+        var connect = function() {
+            websocket = new WebSocket(document.form.url.value);
+            websocket.onopen = function(e) { open(e) };
+            websocket.onclose = function(e) { close(e) };
+            websocket.onmessage = function(e) { message(e) };
+            websocket.onerror = function(e) { error(e) };
+        };
+        var ready = function() { websocket.send('start'); };
+        var disconnect = function() { websocket.close(); };
+        var open = function(e) {
+            output("connected\n");
+            document.form.connect.disabled = true;
+            document.form.disconnect.disabled = false;
+        };
+        var close = function(e) {
+            output("disconnected\n");
+            document.form.connect.disabled = false;
+            document.form.disconnect.disabled = true;
+        };
+        var message = function(e) { output(e.data + '\n'); };
+        var error = function(e) {
+            output('error: ' + e.data + '\n');
+            websocket.close();
+            document.form.connect.disabled = false;
+            document.form.disconnect.disabled = true;
+        };
+        var output = function(msg) {
+            document.form.outputtext.value += msg;
+            document.form.outputtext.scrollTop = document.form.outputtext.scrollHeight;
+        };
+        var clear = function() { document.form.outputtext.value = ''; };
+        window.addEventListener('load', init, false);
+    </script>
+    <div id="output"></div>
+    <form name="form">
+        <input name="url" cols="50"></input>
+        <div>
+            <textarea name="outputtext" rows="20" cols="50"></textarea>
+        </div>
+        <p>
+            <input type="button" name="clear" value="Clear" onClick="window.clear();">
+            <input type="button" name="connect" value="Connect" onClick="window.connect();">
+            <input type="button" name="disconnect" value="Disconnect" onClick="window.disconnect();">
+            <input type="button" name="start" value="Start" onClick="window.ready();">
+        </p>
+    </form>
+</html> 
