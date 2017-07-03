@@ -7,6 +7,7 @@ autovenv.run()
 import atexit
 import json
 import multiprocessing
+import ssl
 import time
 import uuid
 from collections import deque, namedtuple
@@ -19,7 +20,7 @@ import websocket
 from bleach.sanitizer import Cleaner
 from bleach.linkifier import LinkifyFilter
 from tweepy.streaming import Stream, StreamListener
-from SimpleWebSocketServer import SimpleWebSocketServer, WebSocket
+from SimpleWebSocketServer import SimpleWebSocketServer, SimpleSSLWebSocketServer, WebSocket
 
 from utils import (
     raise_hell,
@@ -30,6 +31,9 @@ from config import (
     CONFIG_JSON_URL,
     NEWSFEED_ITEM_LIMIT,
     RECONFIGURE_SECONDS,
+    SSL_ENABLED,
+    SSL_KEYFILE,
+    SSL_CERTFILE,
     TWITTER_CONSUMER_KEY,
     TWITTER_CONSUMER_SECRET,
     TWITTER_ACCESS_TOKEN,
@@ -267,6 +271,10 @@ if __name__ == '__main__':
     twitter.start()
 
     # Start the blocking websocket server in this process
-    server = SimpleWebSocketServer('', WEBSOCKET_PORT, NewsfeedServer)
+    if SSL_ENABLED:
+        server = SimpleSSLWebSocketServer('', WEBSOCKET_PORT, NewsfeedServer,
+            certfile=SSL_CERTFILE, keyfile=SSL_KEYFILE, version=ssl.PROTOCOL_TLSv1_2)
+    else:
+        server = SimpleWebSocketServer('', WEBSOCKET_PORT, NewsfeedServer)
     server.serveforever()
 
