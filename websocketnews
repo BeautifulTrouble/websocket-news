@@ -157,7 +157,7 @@ class NewsfeedServer(WebSocket):
                     text = json.dumps([news_item])
                     client.sendMessage(text)
                     recipient_count += 1
-            print('Sent "{}..." to {} recipients'.format(news_item['content'][:20], recipient_count))
+            print('Sent "{}..." to {} recipients'.format(news_item['content'][:50], recipient_count))
 
         # A new client has connected so we add its instance to the client state
         # dict and set its state to False meaning "don't send it messages yet"
@@ -245,6 +245,8 @@ def the_twitter_cycle():
     auth.set_access_token(TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_TOKEN_SECRET)
     api = tweepy.API(auth)
 
+    first_run = True
+
     # Repeatedly re-configure and initiate stream about every RECONFIGURE_SECONDS
     while True:
         try:
@@ -256,7 +258,19 @@ def the_twitter_cycle():
         track = config.get('twitter', fallback_config.get('twitter', []))
         listener = TwitterStreamListener()
         stream = Stream(auth=api.auth, listener=listener)
-        stream.filter(track=track)
+
+        if first_run:
+            first_run = False
+            # Before following our own account, pull some existing posts
+            for tweet in reversed(api.user_timeline('@beautrising')):
+                if not hasattr(tweet, 'timestamp_ms'):
+                    tweet.timestamp_ms = tweet.created_at.timestamp() * 1000
+                listener.on_status(tweet)
+
+        #stream.filter(track=track)
+        stream.userstream(encoding='utf-8')
+        #stream.filter(follow=['@beautrising'])
+        #stream.filter(follow=['2717150874'])
 
 
 
