@@ -96,8 +96,13 @@ def ws_command(cmd_name_or_instance, *,
         if cmd_name not in _ws_commands:
             raise Exception('Unknown ws_command "{}"'.format(cmd_name))
 
-        url = 'ws://localhost:{}'.format(WEBSOCKET_PORT)
-        ws = websocket.create_connection(url, cookie=_ws_commands[cmd_name])
+        if SSL_ENABLED:
+            url = 'wss://localhost:{}'.format(WEBSOCKET_PORT)
+            ws = websocket.create_connection(url, cookie=_ws_commands[cmd_name],
+                sslopt={"cert_reqs": ssl.CERT_NONE})
+        else:
+            url = 'ws://localhost:{}'.format(WEBSOCKET_PORT)
+            ws = websocket.create_connection(url, cookie=_ws_commands[cmd_name])
         time.sleep(.3)
         ws.close()
 
@@ -261,8 +266,8 @@ def the_twitter_cycle():
 
         if first_run:
             first_run = False
-            # Before following our own account, pull some existing posts
-            for tweet in reversed(api.user_timeline('@beautrising')):
+            # Before following our own account, pull some existing self posts
+            for tweet in reversed(api.user_timeline(TWITTER_ACCESS_TOKEN.split('-')[0])):
                 if not hasattr(tweet, 'timestamp_ms'):
                     tweet.timestamp_ms = tweet.created_at.timestamp() * 1000
                 listener.on_status(tweet)
