@@ -99,7 +99,7 @@ def ws_command(cmd_name_or_instance, *,
         if SSL_ENABLED:
             url = 'wss://localhost:{}'.format(WEBSOCKET_PORT)
             ws = websocket.create_connection(url, cookie=_ws_commands[cmd_name],
-                sslopt={"cert_reqs": ssl.CERT_NONE})
+                sslopt={"check_hostname": False})
         else:
             url = 'ws://localhost:{}'.format(WEBSOCKET_PORT)
             ws = websocket.create_connection(url, cookie=_ws_commands[cmd_name])
