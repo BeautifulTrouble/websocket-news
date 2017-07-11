@@ -1,6 +1,8 @@
 bleach
-facebook-sdk
+plucky
+python-dateutil
 requests
 tweepy
 websocket-client
+git+https://github.com/mobolic/facebook-sdk.git
 git+https://github.com/dpallot/simple-websocket-server.git

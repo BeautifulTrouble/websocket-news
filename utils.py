@@ -3,6 +3,11 @@
 import contextlib
 import traceback
 import os
+import sys
+
+
+DEBUG = '--debug' in sys.argv
+
 
 @contextlib.contextmanager
 def script_directory():
@@ -33,6 +38,7 @@ def raise_hell(f):
 
 
 __all__ = [
+    'DEBUG',
     'raise_hell',
     'script_directory',
 ]
