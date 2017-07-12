@@ -292,7 +292,7 @@ def the_twitter_cycle():
             # Before following our own account, pull some existing self posts
             for tweet in reversed(api.user_timeline(TWITTER_ACCESS_TOKEN.split('-')[0])):
                 if not hasattr(tweet, 'timestamp_ms'):
-                    tweet.timestamp_ms = tweet.created_at.timestamp() * 1000
+                    tweet.timestamp_ms = int(tweet.created_at.timestamp() * 1000)
                 listener.on_status(tweet)
 
         #stream.filter(track=track)
