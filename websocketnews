@@ -79,7 +79,7 @@ NewsItem = namedtuple('NewsItem', [
 clean_html = Cleaner(filters=[LinkifyFilter]).clean
 
 # For sorting lists of NewsItems
-timestamp_sorted = lambda c: sorted(c, key=lambda i: i['timestamp'])
+timestamp_sorted = lambda c: sorted(c, key=lambda i: int(i['timestamp']))
 dequeue = lambda c=None: deque(c or list(), maxlen=NEWSFEED_ITEM_LIMIT)
 
 _ws_commands = {c: str(uuid.uuid4()) for c in [
