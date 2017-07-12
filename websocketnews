@@ -78,6 +78,8 @@ NewsItem = namedtuple('NewsItem', [
 # TODO: Create custom filter to linkify #hashtags & @usernames
 clean_html = Cleaner(filters=[LinkifyFilter]).clean
 
+# For sorting lists of NewsItems
+timestamp_sorted = lambda c: sorted(c, key=lambda i: i['timestamp'])
 
 _ws_commands = {c: str(uuid.uuid4()) for c in [
     'new',
@@ -134,7 +136,8 @@ class NewsfeedServer(WebSocket):
     client_states = {}
 
     # Old items stored in this queue are discarded when queue is full
-    news = deque(maxlen=NEWSFEED_ITEM_LIMIT)
+    twitter_news = deque(maxlen=NEWSFEED_ITEM_LIMIT)
+    facebook_news = deque(maxlen=NEWSFEED_ITEM_LIMIT)
 
     def __init__(self, *a, **kw):
         super().__init__(*a, **kw)
@@ -142,20 +145,23 @@ class NewsfeedServer(WebSocket):
     @classmethod
     def save_cache(cls):
         with script_directory():
+            all_news = timestamp_sorted(cls.twitter_news + cls.facebook_news)
             try:
                 with open(CACHE_FILE, 'w') as cache:
-                    cache.write(json.dumps(list(cls.news)))
+                    cache.write(json.dumps(all_news))
             except OSError: return
-        print('Saved {} items to cache'.format(len(cls.news)))
+        print('Saved {} items to cache'.format(len(all_news)))
 
     @classmethod
     def load_cache(cls):
         with script_directory():
             try:
                 with open(CACHE_FILE) as cache:
-                    cls.news.extend(json.loads(cache.read()))
+                    all_news = json.loads(cache.read())
             except OSError: return
-        print('Loaded {} items from cache'.format(len(cls.news)))
+            cls.twitter_news = timestamp_sorted(filter(lambda i: i['type'] == 'twitter', all_news))
+            cls.facebook_news = timestamp_sorted(filter(lambda i: i['type'] == 'facebook', all_news))
+        print('Loaded {} items from cache'.format(len(all_news)))
 
     @raise_hell
     def handleConnected(self):
@@ -166,7 +172,13 @@ class NewsfeedServer(WebSocket):
         # random uuid and attach it to the cookie header of a websocket connection
         if ws_command(self) == 'new':
             news_item = newsQ.get()
-            self.news.append(news_item)
+            if news_item['type'] == 'twitter':
+                self.twitter_news.append(news_item)
+            elif news_item['type'] == 'facebook':
+                self.facebook_news.append(news_item)
+            else: # ???
+                return
+
             recipient_count = 0
             for client, started in self.client_states.items():
                 if started:
@@ -188,9 +200,10 @@ class NewsfeedServer(WebSocket):
         # If the client has sent anything - "start", "ready", "yo!", we'll send
         # a list of messages from the class attribute news, a queue containing
         # NEWSFEED_ITEM_LIMIT many messages.
-        text = json.dumps([*self.news])
+        all_news = timestamp_sorted(self.twitter_news + self.facebook_news)
+        text = json.dumps([*all_news])
         self.sendMessage(text)
-        print('Sent {} items to new recipient'.format(len(self.news)))
+        print('Sent {} items to new recipient'.format(len(all_news)))
 
         # Signify that this client is now in the started state
         self.client_states[self] = True
