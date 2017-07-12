@@ -5,30 +5,40 @@ import autovenv
 autovenv.run()
 
 import atexit
+import datetime
 import json
 import multiprocessing
+import re
 import ssl
 import time
 import uuid
 from collections import deque, namedtuple
 from functools import partial
+from urllib.parse import urlsplit
 
 import bleach
+import dateutil.parser as dateparser
+import facebook
 import requests
 import tweepy
 import websocket
 from bleach.sanitizer import Cleaner
 from bleach.linkifier import LinkifyFilter
+from plucky import plucks
 from tweepy.streaming import Stream, StreamListener
 from SimpleWebSocketServer import SimpleWebSocketServer, SimpleSSLWebSocketServer, WebSocket
 
 from utils import (
+    DEBUG,
     raise_hell,
     script_directory,
 )
 
 from config import (
     CONFIG_JSON_URL,
+    FACEBOOK_API_VERSION,
+    FACEBOOK_APP_ID,
+    FACEBOOK_SECRET,
     NEWSFEED_ITEM_LIMIT,
     RECONFIGURE_SECONDS,
     SSL_ENABLED,
@@ -51,6 +61,7 @@ newsQ = multiprocessing.Queue()
 
 # This merely serves to document the properties of news items
 NewsItem = namedtuple('NewsItem', [
+    'type',
     'content', 
     'content_html',
     'follow_link',
@@ -162,7 +173,7 @@ class NewsfeedServer(WebSocket):
                     text = json.dumps([news_item])
                     client.sendMessage(text)
                     recipient_count += 1
-            print('Sent "{}..." to {} recipients'.format(news_item['content'][:50], recipient_count))
+            print('Sent "{}..." to {} recipients'.format(news_item['content'].replace('\n', '')[:50], recipient_count))
 
         # A new client has connected so we add its instance to the client state
         # dict and set its state to False meaning "don't send it messages yet"
@@ -200,20 +211,13 @@ class TwitterStreamListener(StreamListener):
         self.start_time = time.time()
         super().__init__(*a, **kw)
 
-    def on_data(self, *a, **kw):
-        '''
-        Disconnect every RECONFIGURE_SECONDS so that the blocking call to 
-        stream.filter() will return and we can update config data
-        '''
-        if time.time() - self.start_time >= RECONFIGURE_SECONDS:
-            return False
-        super().on_data(*a, **kw)
-
     def on_error(self, status_code):
         '''
-        Disconnect on rate limit
+        Slow down and disconnect on rate limit. The expectation here is that
+        the stream will be restarted immediately.
         '''
         if status_code == 420:
+            time.sleep(5)
             return False
 
     def on_status(self, status):
@@ -222,6 +226,7 @@ class TwitterStreamListener(StreamListener):
         to broadcast it to clients
         '''
         tweet = NewsItem(
+            type='twitter',
             content=status.text,
             content_html=clean_html(status.text),
             follow_link='https://twitter.com/intent/follow?screen_name={}'.format(status.author.screen_name),
@@ -237,6 +242,10 @@ class TwitterStreamListener(StreamListener):
         # Signal to the NewsfeedServer process that new data is in the queue
         ws_command('new')
 
+        # Disconnect every RECONFIGURE_SECONDS so that the blocking call to
+        # stream.userstream() will return and we can update config data
+        if time.time() - self.start_time >= RECONFIGURE_SECONDS:
+            return False
 
 
 
@@ -273,9 +282,100 @@ def the_twitter_cycle():
                 listener.on_status(tweet)
 
         #stream.filter(track=track)
-        stream.userstream(encoding='utf-8')
         #stream.filter(follow=['@beautrising'])
         #stream.filter(follow=['2717150874'])
+        stream.userstream(encoding='utf-8')
+
+
+
+
+def the_facebook_cycle():
+    '''
+    '''
+    access_token = '|'.join((FACEBOOK_APP_ID, FACEBOOK_SECRET))
+    graph = facebook.GraphAPI(access_token=access_token, version=FACEBOOK_API_VERSION)
+
+    posted_ids = set()
+
+    # Repeatedly re-configure about every RECONFIGURE_SECONDS
+    while True:
+        try:
+            config = requests.get(CONFIG_JSON_URL).json()
+            print('Loaded facebook config')
+        except:
+            config = fallback_config
+
+        track = config.get('facebook', fallback_config.get('facebook', []))
+        post_fields = 'id,message,from,name,link,created_time'
+        profile_fields = 'picture,name,link'
+        is_app_scoped = re.compile('app_scoped_user_id').search
+
+        post_queue = []
+
+        # For every tracked fb page or profile, we poll
+        for id_or_alias in track:
+            if id_or_alias.startswith('https://'):
+                path = urlsplit(id_or_alias).path.split('/')[1:]
+                if not path: # No hope for this url
+                    continue
+                id_or_alias = path[0]
+
+            try:
+                profile = graph.get_object(id_or_alias)
+            except facebook.GraphAPIError: continue
+
+            for post in graph.get_connections(profile['id'], 'posts', fields=post_fields).get('data', []):
+                content = content_plain = content_html = post.get('message', '')
+                link = post.get('link', '')
+                name = post.get('name', link)
+                if link:
+                    content_plain = '{}\n{}'.format(content, link)
+                    content_html = clean_html('{}\n<a href="{}">{}</a>'.format(content, link, name))
+
+                # Fallback user info is empty
+                user_name = id_or_alias
+                user_link = ''
+                image_https = ''
+
+                poster_id = post.get('from', {}).get('id')
+                if poster_id:
+                    poster_profile = graph.get_object(poster_id, fields=profile_fields)
+
+                    user_name = poster_profile.get('name', '')
+                    user_link = poster_profile.get('link', '')
+                    image_https = plucks(poster_profile, 'picture.data.url', '')
+
+                dateobj = datetime.datetime.now()
+                if post.get('created_time'):
+                    dateobj = dateparser.parse(post['created_time'])
+                timestamp_ms = int(dateobj.timestamp() * 1000)
+
+                fb_post = NewsItem(
+                    type='facebook',
+                    content=content_plain,
+                    content_html=content_html,
+                    follow_link='',
+                    image_http='',
+                    image_https=image_https,
+                    timestamp=timestamp_ms,
+                    user_name=user_name,
+                    user_handle=user_name,
+                    user_link=user_link,
+                )._asdict()
+
+                if post['id'] not in posted_ids:
+                    posted_ids.add(post['id'])
+                    post_queue.append(fb_post)
+
+        # Now sort the post_queue by timestamp and push them out
+        for post in sorted(post_queue, key=lambda p: p['timestamp']):
+            newsQ.put(post)
+
+            # Signal to the NewsfeedServer process that new data is in the queue
+            ws_command('new')
+
+        # TODO: one cycle for polling and one cycle for reconfiguring
+        time.sleep(RECONFIGURE_SECONDS)
 
 
 
@@ -288,6 +388,10 @@ if __name__ == '__main__':
     # Start the blocking twitter listener process
     twitter = multiprocessing.Process(target=the_twitter_cycle)
     twitter.start()
+
+    # Start the blocking facebook polling process
+    fb = multiprocessing.Process(target=the_facebook_cycle)
+    fb.start()
 
     # Start the blocking websocket server in this process
     if SSL_ENABLED:
