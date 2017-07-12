@@ -79,7 +79,7 @@ NewsItem = namedtuple('NewsItem', [
 clean_html = Cleaner(filters=[LinkifyFilter]).clean
 
 # For sorting lists of NewsItems
-timestamp_sorted = lambda c: sorted(c, key=lambda i: int(i['timestamp']))
+timestamp_sorted = lambda c: sorted(c, key=lambda i: i['timestamp'])
 dequeue = lambda c=None: deque(c or list(), maxlen=NEWSFEED_ITEM_LIMIT)
 
 _ws_commands = {c: str(uuid.uuid4()) for c in [
@@ -246,7 +246,7 @@ class TwitterStreamListener(StreamListener):
             follow_link='https://twitter.com/intent/follow?screen_name={}'.format(status.author.screen_name),
             image_http=status.author.profile_image_url,
             image_https=status.author.profile_image_url_https,
-            timestamp=status.timestamp_ms,
+            timestamp=int(status.timestamp_ms),
             user_name=status.author.name,
             user_handle=status.author.screen_name,
             user_link='https://twitter.com/{}'.format(status.author.screen_name),
@@ -292,7 +292,7 @@ def the_twitter_cycle():
             # Before following our own account, pull some existing self posts
             for tweet in reversed(api.user_timeline(TWITTER_ACCESS_TOKEN.split('-')[0])):
                 if not hasattr(tweet, 'timestamp_ms'):
-                    tweet.timestamp_ms = int(tweet.created_at.timestamp() * 1000)
+                    tweet.timestamp_ms = tweet.created_at.timestamp() * 1000
                 listener.on_status(tweet)
 
         #stream.filter(track=track)
@@ -362,7 +362,7 @@ def the_facebook_cycle():
                 dateobj = datetime.datetime.now()
                 if post.get('created_time'):
                     dateobj = dateparser.parse(post['created_time'])
-                timestamp_ms = int(dateobj.timestamp() * 1000)
+                timestamp_ms = dateobj.timestamp() * 1000
 
                 fb_post = NewsItem(
                     type='facebook',
@@ -371,7 +371,7 @@ def the_facebook_cycle():
                     follow_link='',
                     image_http='',
                     image_https=image_https,
-                    timestamp=timestamp_ms,
+                    timestamp=int(timestamp_ms),
                     user_name=user_name,
                     user_handle=user_name,
                     user_link=user_link,
