@@ -80,6 +80,7 @@ clean_html = Cleaner(filters=[LinkifyFilter]).clean
 
 # For sorting lists of NewsItems
 timestamp_sorted = lambda c: sorted(c, key=lambda i: i['timestamp'])
+dequeue = lambda c=None: deque(c or list(), maxlen=NEWSFEED_ITEM_LIMIT)
 
 _ws_commands = {c: str(uuid.uuid4()) for c in [
     'new',
@@ -136,8 +137,8 @@ class NewsfeedServer(WebSocket):
     client_states = {}
 
     # Old items stored in this queue are discarded when queue is full
-    twitter_news = deque(maxlen=NEWSFEED_ITEM_LIMIT)
-    facebook_news = deque(maxlen=NEWSFEED_ITEM_LIMIT)
+    twitter_news = dequeue()
+    facebook_news = dequeue()
 
     def __init__(self, *a, **kw):
         super().__init__(*a, **kw)
@@ -145,7 +146,7 @@ class NewsfeedServer(WebSocket):
     @classmethod
     def save_cache(cls):
         with script_directory():
-            all_news = timestamp_sorted(cls.twitter_news + cls.facebook_news)
+            all_news = timestamp_sorted(list(cls.twitter_news) + list(cls.facebook_news))
             try:
                 with open(CACHE_FILE, 'w') as cache:
                     cache.write(json.dumps(all_news))
@@ -159,8 +160,8 @@ class NewsfeedServer(WebSocket):
                 with open(CACHE_FILE) as cache:
                     all_news = json.loads(cache.read())
             except OSError: return
-            cls.twitter_news = timestamp_sorted(filter(lambda i: i['type'] == 'twitter', all_news))
-            cls.facebook_news = timestamp_sorted(filter(lambda i: i['type'] == 'facebook', all_news))
+            cls.twitter_news = dequeue(timestamp_sorted(filter(lambda i: i['type'] == 'twitter', all_news)))
+            cls.facebook_news = dequeue(timestamp_sorted(filter(lambda i: i['type'] == 'facebook', all_news)))
         print('Loaded {} items from cache'.format(len(all_news)))
 
     @raise_hell
@@ -200,7 +201,7 @@ class NewsfeedServer(WebSocket):
         # If the client has sent anything - "start", "ready", "yo!", we'll send
         # a list of messages from the class attribute news, a queue containing
         # NEWSFEED_ITEM_LIMIT many messages.
-        all_news = timestamp_sorted(self.twitter_news + self.facebook_news)
+        all_news = timestamp_sorted(list(self.twitter_news) + list(self.facebook_news))
         text = json.dumps([*all_news])
         self.sendMessage(text)
         print('Sent {} items to new recipient'.format(len(all_news)))
