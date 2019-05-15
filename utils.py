@@ -1,9 +1,10 @@
 #encoding: utf-8
 
 import contextlib
-import traceback
+import inspect
 import os
 import sys
+import traceback
 
 
 DEBUG = '--debug' in sys.argv
@@ -13,12 +14,15 @@ DEBUG = '--debug' in sys.argv
 def script_directory():
     '''
     A context manager which allows you to write blocks of code which run within 
-    this script's directory. The working directory is restored afterward.
+    a script's directory. The working directory is restored afterward.
     '''
     cwd = os.getcwd()
-    os.chdir(os.path.dirname(os.path.realpath(__file__)))
+    # Frames are: script_directory -> contextlib.contextmanager -> caller
+    caller = inspect.getouterframes(inspect.currentframe())[2]
+    script_dir = os.path.dirname(os.path.realpath(caller.filename))
+    os.chdir(script_dir)
     try:
-        yield
+        yield script_dir
     finally:
         os.chdir(cwd)
 
